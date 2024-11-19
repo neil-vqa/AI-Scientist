@@ -7,7 +7,12 @@ from typing import List, Dict, Union
 import backoff
 import requests
 
-from ai_scientist.llm import get_response_from_llm, extract_json_between_markers, create_client, AVAILABLE_LLMS
+from ai_scientist.llm import (
+    get_response_from_llm,
+    extract_json_between_markers,
+    create_client,
+    AVAILABLE_LLMS,
+)
 
 S2_API_KEY = os.getenv("S2_API_KEY")
 
@@ -74,12 +79,12 @@ ONLY INCLUDE "I am done" IF YOU ARE MAKING NO MORE CHANGES."""
 
 # GENERATE IDEAS
 def generate_ideas(
-        base_dir,
-        client,
-        model,
-        skip_generation=False,
-        max_num_generations=20,
-        num_reflections=5,
+    base_dir,
+    client,
+    model,
+    skip_generation=False,
+    max_num_generations=20,
+    num_reflections=5,
 ):
     if skip_generation:
         # Load existing ideas from file
@@ -150,7 +155,7 @@ def generate_ideas(
                     ## PARSE OUTPUT
                     json_output = extract_json_between_markers(text)
                     assert (
-                            json_output is not None
+                        json_output is not None
                     ), "Failed to extract JSON from LLM output"
                     print(json_output)
 
@@ -176,12 +181,12 @@ def generate_ideas(
 
 # GENERATE IDEAS OPEN-ENDED
 def generate_next_idea(
-        base_dir,
-        client,
-        model,
-        prev_idea_archive=[],
-        num_reflections=5,
-        max_attempts=10,
+    base_dir,
+    client,
+    model,
+    prev_idea_archive=[],
+    num_reflections=5,
+    max_attempts=10,
 ):
     idea_archive = prev_idea_archive
     original_archive_size = len(idea_archive)
@@ -249,7 +254,7 @@ Scores of 0 indicate the idea failed either during experimentation, writeup or r
                         ## PARSE OUTPUT
                         json_output = extract_json_between_markers(text)
                         assert (
-                                json_output is not None
+                            json_output is not None
                         ), "Failed to extract JSON from LLM output"
                         print(json_output)
 
@@ -279,20 +284,50 @@ def on_backoff(details):
     )
 
 
+# @backoff.on_exception(
+#     backoff.expo, requests.exceptions.HTTPError, on_backoff=on_backoff
+# )
+# def search_for_papers(query, result_limit=10) -> Union[None, List[Dict]]:
+#     if not query:
+#         return None
+#     rsp = requests.get(
+#         "https://api.semanticscholar.org/graph/v1/paper/search",
+#         headers={"X-API-KEY": S2_API_KEY},
+#         params={
+#             "query": query,
+#             "limit": result_limit,
+#             "fields": "title,authors,venue,year,abstract,citationStyles,citationCount",
+#         },
+#     )
+#     print(f"Response Status Code: {rsp.status_code}")
+#     print(
+#         f"Response Content: {rsp.text[:500]}"
+#     )  # Print the first 500 characters of the response content
+#     rsp.raise_for_status()
+#     results = rsp.json()
+#     total = results["total"]
+#     time.sleep(1.0)
+#     if not total:
+#         return None
+
+#     papers = results["data"]
+#     return papers
+
+
 @backoff.on_exception(
     backoff.expo, requests.exceptions.HTTPError, on_backoff=on_backoff
 )
 def search_for_papers(query, result_limit=10) -> Union[None, List[Dict]]:
+    CORE_API_KEY = os.environ.get("CORE_API_KEY")
+    no_query = "No papers found. Skip."
     if not query:
-        return None
-    rsp = requests.get(
-        "https://api.semanticscholar.org/graph/v1/paper/search",
-        headers={"X-API-KEY": S2_API_KEY},
-        params={
-            "query": query,
-            "limit": result_limit,
-            "fields": "title,authors,venue,year,abstract,citationStyles,citationCount",
-        },
+        return no_query
+    headers = {"Authorization": f"Bearer {CORE_API_KEY}"}
+    payload = {"q": query, "limit": result_limit}
+    rsp = requests.post(
+        "https://api.core.ac.uk/v3/search/works",
+        data=json.dumps(payload),
+        headers=headers,
     )
     print(f"Response Status Code: {rsp.status_code}")
     print(
@@ -300,12 +335,11 @@ def search_for_papers(query, result_limit=10) -> Union[None, List[Dict]]:
     )  # Print the first 500 characters of the response content
     rsp.raise_for_status()
     results = rsp.json()
-    total = results["total"]
-    time.sleep(1.0)
-    if not total:
-        return None
 
-    papers = results["data"]
+    total = results["totalHits"]
+    if total == 0:
+        return no_query
+    papers = results["results"]
     return papers
 
 
@@ -359,11 +393,11 @@ This JSON will be automatically parsed, so ensure the format is precise.'''
 
 
 def check_idea_novelty(
-        ideas,
-        base_dir,
-        client,
-        model,
-        max_num_iterations=10,
+    ideas,
+    base_dir,
+    client,
+    model,
+    max_num_iterations=10,
 ):
     with open(osp.join(base_dir, "experiment.py"), "r") as f:
         code = f.read()
